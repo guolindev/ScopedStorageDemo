@@ -2,6 +2,7 @@ package com.example.scopedstoragedemo
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -12,11 +13,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import kotlinx.android.synthetic.main.activity_main.*
+import com.example.scopedstoragedemo.databinding.ActivityMainBinding
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -26,12 +28,16 @@ import java.net.URL
 import kotlin.concurrent.thread
 
 const val PICK_FILE = 1
+const val PICK_IMAGES = 2
+const val CREATE_WRITE_REQUEST = 3
+const val ALL_FILES_ACCESS_PERMISSION = 4
 
 class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        val binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
         val permissionsToRequire = ArrayList<String>()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             permissionsToRequire.add(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -39,27 +45,35 @@ class MainActivity : AppCompatActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             permissionsToRequire.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
-        if (!permissionsToRequire.isEmpty()) {
+        if (permissionsToRequire.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, permissionsToRequire.toTypedArray(), 0)
         }
-        browseAlbum.setOnClickListener {
+        binding.browseAlbum.setOnClickListener {
             val intent = Intent(this, BrowseAlbumActivity::class.java)
             startActivity(intent)
         }
-        addImageToAlbum.setOnClickListener {
+        binding.addImageToAlbum.setOnClickListener {
             val bitmap = BitmapFactory.decodeResource(resources, R.drawable.image)
             val displayName = "${System.currentTimeMillis()}.jpg"
             val mimeType = "image/jpeg"
             val compressFormat = Bitmap.CompressFormat.JPEG
             addBitmapToAlbum(bitmap, displayName, mimeType, compressFormat)
         }
-        downloadFile.setOnClickListener {
+        binding.downloadFile.setOnClickListener {
             val fileUrl = "http://guolin.tech/android.txt"
             val fileName = "android.txt"
             downloadFile(fileUrl, fileName)
         }
-        pickFile.setOnClickListener {
+        binding.pickFile.setOnClickListener {
             pickFileAndCopyUriToExternalFilesDir()
+        }
+        binding.writeRequest.setOnClickListener {
+            val intent = Intent(this, BrowseAlbumActivity::class.java)
+            intent.putExtra("pick_files", true)
+            startActivityForResult(intent, PICK_IMAGES)
+        }
+        binding.manageExternalStorage.setOnClickListener {
+            requestAllFilesAccessPermission()
         }
     }
 
@@ -144,6 +158,22 @@ class MainActivity : AppCompatActivity() {
         startActivityForResult(intent, PICK_FILE)
     }
 
+    private fun requestAllFilesAccessPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+            Toast.makeText(this, "We can access all files on external storage now", Toast.LENGTH_SHORT).show()
+        } else {
+            val builder = AlertDialog.Builder(this)
+                .setTitle("Tip")
+                .setMessage("We need permission to access all files on external storage")
+                .setPositiveButton("OK") { _, _ ->
+                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    startActivityForResult(intent, ALL_FILES_ACCESS_PERMISSION)
+                }
+                .setNegativeButton("Cancel", null)
+            builder.show()
+        }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
@@ -155,6 +185,28 @@ class MainActivity : AppCompatActivity() {
                         copyUriToExternalFilesDir(uri, fileName)
                     }
                 }
+            }
+            PICK_IMAGES -> {
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        val urisToModify = data.getSerializableExtra("checked_uris") as ArrayList<Uri>
+                        val editPendingIntent = MediaStore.createWriteRequest(contentResolver, urisToModify)
+                        startIntentSenderForResult(editPendingIntent.intentSender, CREATE_WRITE_REQUEST,
+                            null, 0, 0, 0)
+                    } else {
+                        Toast.makeText(this, "Write permissions are granted", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            CREATE_WRITE_REQUEST -> {
+                if (resultCode == Activity.RESULT_OK) {
+                    Toast.makeText(this, "Write permissions are granted", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Write permissions are denied", Toast.LENGTH_SHORT).show()
+                }
+            }
+            ALL_FILES_ACCESS_PERMISSION -> {
+                requestAllFilesAccessPermission()
             }
         }
     }
