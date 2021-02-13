@@ -39,7 +39,9 @@ class MainActivity : AppCompatActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             permissionsToRequire.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
-        ActivityCompat.requestPermissions(this, permissionsToRequire.toTypedArray(), 0)
+        if (!permissionsToRequire.isEmpty()) {
+            ActivityCompat.requestPermissions(this, permissionsToRequire.toTypedArray(), 0)
+        }
         browseAlbum.setOnClickListener {
             val intent = Intent(this, BrowseAlbumActivity::class.java)
             startActivity(intent)
